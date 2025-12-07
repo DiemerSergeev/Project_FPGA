@@ -1,38 +1,39 @@
 `timescale 1ns / 1ps
 
 module hc_sr04_driver (
-    input  logic        clk,    // 100 MHz
+    input  logic        clk,
     input  logic        rst,
-    input  logic        start,  // Сигнал запуска измерения
+    input  logic        start,
     input  logic        echo,
     output logic        trig,
-    output logic [15:0] result, // Дистанция в см
-    output logic        done    // Флаг готовности результата
+    output logic [15:0] result,
+    output logic        done
 );
-
-    // Параметры для 100 МГц
+//////////////////////////////////////////////////////////////////////////////
     localparam int TRIG_WIDTH = 1000; // 10 мкс
     localparam int CLK_PER_CM = 5800; // 58 мкс (звук туда-обратно 1 см)
-
+//////////////////////////////////////////////////////////////////////////////
     typedef enum logic [1:0] {
         IDLE,
         TRIGGER,
         WAIT_ECHO,
         MEASURE
     } state_t;
-
+//////////////////////////////////////////////////////////////////////////////
     state_t state;
     logic [31:0] tick_counter;
     logic [15:0] cm_counter;
-    
-    // Синхронизация echo
-    logic echo_sync_0, echo_sync;
-    always_ff @(posedge clk) begin
+    logic echo_sync_0, 
+	logic echo_sync;
+//////////////////////////////////////////////////////////////////////////////
+    always_ff @(posedge clk) 
+	begin
         echo_sync_0 <= echo;
         echo_sync   <= echo_sync_0;
     end
-
-    always_ff @(posedge clk or posedge rst) begin
+//////////////////////////////////////////////////////////////////////////////
+    always_ff @(posedge clk or posedge rst) 
+	begin
         if (rst) 
         begin
             state        <= IDLE;
@@ -45,7 +46,6 @@ module hc_sr04_driver (
         else 
         begin
             case (state)
-                // Ждем внешнего сигнала start
                 IDLE: 
                 begin
                     trig <= 0;
@@ -56,7 +56,6 @@ module hc_sr04_driver (
                     end
                 end
 
-                // Генерируем 10 мкс импульс
                 TRIGGER: 
                 begin
                     done <= 0;

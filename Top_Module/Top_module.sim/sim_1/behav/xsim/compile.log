@@ -1,4 +1,0 @@
-INFO: [VRFC 10-2263] Analyzing SystemVerilog file "F:/Students/Usanov/4941104-40701_FPGA_project/DHT11_Driver/RTL Sources/DHT11_Driver.sv" into library xil_defaultlib
-INFO: [VRFC 10-311] analyzing module DHT11_driver
-INFO: [VRFC 10-2263] Analyzing SystemVerilog file "F:/Students/Usanov/4941104-40701_FPGA_project/DHT11_Driver/RTL Sources/DHT11_Driver_TB.sv" into library xil_defaultlib
-INFO: [VRFC 10-311] analyzing module DHT11_Driver_TB

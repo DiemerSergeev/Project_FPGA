@@ -11,7 +11,7 @@ module top_module_tb;
 	
 	top_module top_module_ins(
 		.clk(clk), .rst(rst), 
-		.dataDHT11k(dht_data_pin),
+		.dataDHT11(dht_data_pin),
 		.echosr04(sonar_echo_pin), .trigsr04(sonar_trig_pin), 
 		.button(button), .hsync(hsync), .vsync(vsync), .vgadata(vgadata) );
 

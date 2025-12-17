@@ -38,7 +38,9 @@ module top_module #(
 
     logic btn_pulse;
     logic [1:0]  btn_sync;   
-    logic [31:0] db_cnt;     
+    logic [31:0] db_cnt; 
+    logic vgar;    
+    logic vgab;  
     
     logic str_dht_valid, str_dht_error, str_dht_active;
     logic str_ctrl_start, str_data_ready, str_sonar_done;
@@ -105,15 +107,18 @@ module top_module #(
     VGA_top vga_driver_inst (
         .clk_100m(clk),
         .btn_rst_n(!rst),
-        .switch(btn_pulse),
+        .pulse(btn_pulse),
         .temp_int(temp_int),
         .temp_dec(temp_dec),
         .dist_int(dist_int),
         .dist_dec(dist_dec),
         .hum_int(hum_int),
+        .hum_dec(hum_dec),
         .vga_hsync(hsync),
         .vga_vsync(vsync),
-        .vga_g(vgadata)
+        .vga_g(vgadata),
+        .vga_r(vgar),
+        .vga_b(vgab)
     );
     
     // Debouncer

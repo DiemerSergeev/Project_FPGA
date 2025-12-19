@@ -64,7 +64,7 @@ module sensor_interface #(
             timer_cnt       <= 32'd0;
         end 
         else begin
-            drv_start  <= 1'b0;
+            
             data_ready <= 1'b0;
 
             if (state == WAIT_SENSORS) begin
@@ -104,6 +104,7 @@ module sensor_interface #(
                 end
 
                 WAIT_SENSORS: begin
+                    drv_start  <= 1'b0;
                     if (dht_finished && sonar_finished) begin
                         state <= UPDATE_OUTPUT;
                     end

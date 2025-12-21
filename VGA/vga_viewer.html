@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>VGA Sim Viewer v3</title>
+    <style>
+        body { font-family: 'Segoe UI', monospace; background-color: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .controls { background: #1e1e1e; padding: 20px; border-radius: 8px; width: 100%; max-width: 900px; margin-bottom: 20px; border: 1px solid #333; }
+        .row { display: flex; gap: 20px; margin-bottom: 15px; align-items: flex-end; flex-wrap: wrap; }
+        
+        label { display: block; font-size: 0.8em; color: #888; margin-bottom: 4px; }
+        input[type="number"], select { background: #2d2d2d; border: 1px solid #444; color: white; padding: 6px; border-radius: 4px; }
+        button { background-color: #007acc; color: white; border: none; padding: 8px 24px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #0062a3; }
+
+        .slider-group { background: #252526; padding: 15px; border-radius: 5px; margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        
+        #canvas-wrapper { border: 2px solid #333; background: #000; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        canvas { display: block; image-rendering: pixelated; }
+
+        .status-bar { margin-top: 5px; font-size: 0.9em; color: #4ec9b0; display: flex; justify-content: space-between; }
+        .warn { color: #ce9178; }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <div class="row">
+        <h2 style="margin:0; color:#fff;">VGA CSV Visualizer</h2>
+    </div>
+
+    <div class="row" style="border-bottom: 1px solid #333; padding-bottom: 15px;">
+        <div>
+            <label>1. CSV Файл:</label>
+            <input type="file" id="fileInput" accept=".csv,.txt">
+        </div>
+        <div>
+            <label>Единицы времени в файле:</label>
+            <select id="timeUnit">
+                <option value="1">picoseconds (ps) - Vivado Def</option>
+                <option value="1000">nanoseconds (ns)</option>
+                <option value="1000000">microseconds (us)</option>
+            </select>
+        </div>
+        <div>
+            <label>Pixel Clock (ns):</label>
+            <input type="number" id="pixelPeriod" value="40" step="0.1" style="width: 70px;">
+        </div>
+        <div>
+            <button onclick="loadFile()">ЗАГРУЗИТЬ</button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div>
+            <label>Колонки (0,1,2...):</label>
+            <span style="font-size:0.8em">T:</span><input type="number" id="colT" value="0" style="width:30px">
+            <span style="font-size:0.8em">H:</span><input type="number" id="colH" value="1" style="width:30px">
+            <span style="font-size:0.8em">V:</span><input type="number" id="colV" value="2" style="width:30px">
+            <span style="font-size:0.8em">D:</span><input type="number" id="colD" value="3" style="width:30px">
+        </div>
+        <div>
+            <label>Полярность Sync:</label>
+            <select id="syncPol" onchange="renderCurrent()">
+                <option value="0">Active Low (0 = Pulse)</option>
+                <option value="1">Active High (1 = Pulse)</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="slider-group">
+        <div class="status-bar">
+            <span>Смещение по X (H-Offset): <span id="hOffVal">0</span> pix</span>
+        </div>
+        <input type="range" id="hOffset" min="-200" max="200" value="0" oninput="renderCurrent()">
+        
+        <div class="status-bar" style="margin-top:10px;">
+            <span id="frameInfo">Кадр: 0</span>
+            <span id="timeInfo">Time: 0</span>
+        </div>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" disabled oninput="renderCurrent()">
+    </div>
+</div>
+
+<div id="canvas-wrapper">
+    <canvas id="vgaCanvas" width="800" height="525"></canvas>
+</div>
+
+<script>
+    let rawEvents = [];
+    let frameIndices = []; // Индексы событий, где начинается кадр
+    
+    // Получение ссылок на UI
+    const el = (id) => document.getElementById(id);
+
+    function loadFile() {
+        const file = el('fileInput').files[0];
+        if (!file) return alert("Файл не выбран");
+        
+        const reader = new FileReader();
+        el('frameInfo').innerText = "Загрузка...";
+        
+        reader.onload = (e) => processCSV(e.target.result);
+        reader.readAsText(file);
+    }
+
+    function processCSV(text) {
+        rawEvents = [];
+        frameIndices = [];
+        
+        const lines = text.split('\n');
+        const colT = parseInt(el('colT').value);
+        const colH = parseInt(el('colH').value);
+        const colV = parseInt(el('colV').value);
+        const colD = parseInt(el('colD').value);
+        
+        // Множитель для перевода в наносекунды
+        // Если выбрано ps (1), то time / 1000 = ns. 
+        // Формула: time_ns = raw_val * unit_val / 1000.0
+        const inputUnitWeight = parseFloat(el('timeUnit').value); 
+        const toNsFactor = inputUnitWeight / 1000.0; 
+
+        let firstLineData = 0;
+        // Пропускаем заголовок
+        for(let i=0; i<lines.length; i++) {
+            if (/^\s*\d/.test(lines[i])) { firstLineData = i; break; }
+        }
+
+        for (let i = firstLineData; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
+            let parts = line.split(',');
+            if (parts.length <= Math.max(colT,colH,colV,colD)) continue;
+
+            // Читаем время как float (могут быть большие числа)
+            let tRaw = parseFloat(parts[colT]); 
+            let tNs = tRaw * toNsFactor;
+
+            rawEvents.push({
+                t: tNs,
+                h: parseInt(parts[colH]) ? 1 : 0,
+                v: parseInt(parts[colV]) ? 1 : 0,
+                d: parseInt(parts[colD]) ? 1 : 0
+            });
+        }
+        
+        if (rawEvents.length === 0) return alert("Данные не найдены");
+
+        analyzeStructure();
+    }
+
+    function analyzeStructure() {
+        const activeLow = el('syncPol').value === "0";
+        const vAct = activeLow ? 0 : 1;
+        const vIdle = activeLow ? 1 : 0;
+        
+        // Ищем VSYNC Edge (Start of Frame)
+        // Для Active Low ищем спад 1->0 (начало импульса) или фронт 0->1 (конец импульса/начало Back Porch)
+        // Обычно удобнее синхронизироваться по активному фронту (начало импульса)
+        
+        frameIndices.push(0); // Всегда добавляем начало файла
+
+        for(let i=1; i<rawEvents.length; i++) {
+            let prev = rawEvents[i-1].v;
+            let curr = rawEvents[i].v;
+            // Обнаружение начала импульса VSYNC
+            if (prev === vIdle && curr === vAct) {
+                frameIndices.push(i);
+            }
+        }
+        
+        // Настройка слайдера
+        const slider = el('frameSlider');
+        slider.max = frameIndices.length - 1;
+        slider.value = 0;
+        slider.disabled = false;
+        
+        el('frameInfo').innerText = `Загружено событий: ${rawEvents.length}. Кадров: ${frameIndices.length}`;
+        renderCurrent();
+    }
+
+    function renderCurrent() {
+        renderFrame(el('frameSlider').value);
+        el('hOffVal').innerText = el('hOffset').value;
+    }
+
+    function renderFrame(fIdx) {
+        fIdx = parseInt(fIdx);
+        const ctx = el('vgaCanvas').getContext('2d');
+        const W = 800; // Ширина канваса
+        const H = 525; // Высота канваса
+        
+        // Очистка
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0,0,W,H);
+        
+        if (!rawEvents.length) return;
+
+        const startIdx = frameIndices[fIdx];
+        const endIdx = (fIdx + 1 < frameIndices.length) ? frameIndices[fIdx+1] : rawEvents.length;
+
+        // Настройки
+        const pixelNs = parseFloat(el('pixelPeriod').value);
+        const hOffset = parseInt(el('hOffset').value);
+        const activeLow = el('syncPol').value === "0";
+        const hAct = activeLow ? 0 : 1;
+        const hIdle = activeLow ? 1 : 0;
+
+        const imgData = ctx.createImageData(W, H);
+        const pixels = imgData.data;
+
+        // Эмуляция луча
+        let beamX = 0;
+        let beamY = 0;
+
+        // Для отладки смещения, начнем Y чуть выше, если файл начался посреди кадра
+        // но здесь мы просто рисуем от 0.
+        
+        for (let i = startIdx; i < endIdx - 1; i++) {
+            let evt = rawEvents[i];
+            let nextEvt = rawEvents[i+1];
+            
+            // Длительность текущего состояния
+            let dur = nextEvt.t - evt.t; 
+            if (dur <= 0) continue;
+
+            let numPixels = dur / pixelNs;
+
+            // Логика перевода строки (HSYNC)
+            // Если мы видим переход HSYNC в активное состояние -> сброс X, +Y
+            if (i > startIdx) {
+                let prevH = rawEvents[i-1].h;
+                if (prevH === hIdle && evt.h === hAct) {
+                    beamY++;
+                    // Здесь мы применяем смещение. 
+                    // beamX сбрасывается не в 0, а в минус "размер Front Porch + Sync + Back Porch"
+                    // Чтобы активная область попала в положительные координаты.
+                    // Обычно весь бланк занимает ~160 пикселей.
+                    // Мы будем использовать ручной Offset.
+                    beamX = -150; // Грубое приближение стандартного VGA
+                }
+            }
+
+            // Рисуем линию
+            // Оптимизация: если Data=0, просто двигаем X
+            if (evt.d === 1) {
+                let xStart = Math.floor(beamX + hOffset);
+                let xEnd = Math.floor(beamX + hOffset + numPixels);
+                
+                // Ограничение по Y
+                if (beamY >= 0 && beamY < H) {
+                    // Ограничение по X (clipping)
+                    let drawStart = Math.max(0, xStart);
+                    let drawEnd = Math.min(W, xEnd);
+
+                    for (let px = drawStart; px < drawEnd; px++) {
+                        let ptr = (beamY * W + px) * 4;
+                        pixels[ptr] = 0;     // R
+                        pixels[ptr+1] = 255; // G
+                        pixels[ptr+2] = 0;   // B
+                        pixels[ptr+3] = 255; // A
+                    }
+                }
+            }
+            
+            beamX += numPixels;
+        }
+        
+        ctx.putImageData(imgData, 0, 0);
+        
+        // Обновляем инфо
+        let startTime = rawEvents[startIdx].t.toFixed(2);
+        el('timeInfo').innerText = `Start Time: ${startTime} ns`;
+    }
+</script>
+
+</body>
+</html>

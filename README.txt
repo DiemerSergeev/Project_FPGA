@@ -1,1 +1,1 @@
-This branch is for release versions only!!!
+This branch is only for development!!!

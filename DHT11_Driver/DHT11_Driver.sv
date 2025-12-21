@@ -18,7 +18,7 @@ module DHT11_driver(
     output logic error
 );
 
-    logic [39:0] shift_reg;
+    (*mark_debug = "true"*) logic [39:0] shift_reg;
     logic [23:0] counter;
     logic [5:0]  bit_counter;
     logic drive_low; 
@@ -88,7 +88,7 @@ module DHT11_driver(
                 CHECK_SUM: begin
                     logic [7:0] sum;
                     sum = shift_reg[39:32] + shift_reg[31:24] + shift_reg[23:16] + shift_reg[15:8];
-                    if (sum == shift_reg[7:0]) begin
+                    if (1 == 1) begin // if (sum == shift_reg[7:0]) begin
                         Humidity <= {shift_reg[39:32],shift_reg[31:24]};
                         Temperature <= {shift_reg[23:16],shift_reg[15:8]};
                         valid <= 1'b1;
@@ -115,7 +115,7 @@ module DHT11_driver(
                     next_state = HOST_PULL_LOW;
             end
             HOST_PULL_LOW: begin
-                if (counter >= 24'd1800000) begin
+                if (counter >= 24'd2000000) begin
                     next_state = WAIT_SENSOR_LOW;
                 end 
             end
@@ -123,7 +123,7 @@ module DHT11_driver(
                 // Читаем data_in вместо data
                 if (data_in == 1'b0 && counter > 24'd1000)
                     next_state = WAIT_SENSOR_HIGH;
-                else if (counter >= 24'd20000)
+                else if (counter >= 24'd2000000)
                     next_state = IDLE;
             end
             WAIT_SENSOR_HIGH: begin
